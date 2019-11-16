@@ -35,9 +35,10 @@ public class WebSecurity extends WebSecurityConfigurerAdapter {
 				.antMatchers(environment.getProperty("api.trainer.h2console.url.path")).permitAll()
 				.antMatchers(HttpMethod.POST, environment.getProperty("api.trainer.registration.url.path")).permitAll()
 				.antMatchers(HttpMethod.POST, environment.getProperty("api.trainer.login.url.path")).permitAll()
-				.antMatchers(environment.getProperty("api.admin.h2console.url.path")).permitAll()
+				.antMatchers( environment.getProperty("api.admin.h2console.url.path")).permitAll()
 				.antMatchers(HttpMethod.POST, environment.getProperty("api.admin.registration.url.path")).permitAll()
 				.antMatchers(HttpMethod.POST, environment.getProperty("api.admin.login.url.path")).permitAll()
+				.antMatchers(environment.getProperty("api.training.h2console.url.path")).permitAll()
 				.anyRequest().authenticated()
 				.and()
 				.addFilter(new AuthorizationFilter(authenticationManager(), environment));
