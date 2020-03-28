@@ -3,6 +3,7 @@ package com.fitcrew.FitCrewAppZuulApiGateway.security;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Objects;
+import java.util.Optional;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
@@ -19,67 +20,71 @@ import io.jsonwebtoken.Jwts;
 
 public class AuthorizationFilter extends BasicAuthenticationFilter {
 
-	private final Environment environment;
+    private static String TOKEN_HEADER_PREFIX = "authorization.token.header.prefix";
+    private static String TOKEN_HEADER_NAME = "authorization.token.header.name";
+    private static String TOKEN_SECRET = "token.secret";
+    private final Environment environment;
 
-	AuthorizationFilter(AuthenticationManager authenticationManager,
-						Environment environment) {
-		super(authenticationManager);
-		this.environment = environment;
-	}
+    AuthorizationFilter(AuthenticationManager authenticationManager,
+                        Environment environment) {
+        super(authenticationManager);
+        this.environment = environment;
+    }
 
-	protected void doFilterInternal(HttpServletRequest request,
-									HttpServletResponse response,
-									FilterChain chain) throws IOException, ServletException {
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain chain) throws IOException, ServletException {
 
-		String authorizationHeader = getAuthorizationTokenHeader(request);
+        if (isAuthorizationHeader(getAuthorizationTokenHeader(request))) {
+            chain.doFilter(request, response);
+            return;
+        }
+        getAuthentication(request, response, chain);
+    }
 
-		if (authorizationHeader == null ||
-				!authorizationHeader.startsWith(
-						Objects.requireNonNull(
-								environment.getProperty("authorization.token.header.prefix")
-						)
-				)
-		) {
-			chain.doFilter(request, response);
-			return;
-		}
+    private void getAuthentication(HttpServletRequest request,
+                                   HttpServletResponse response,
+                                   FilterChain chain) throws IOException, ServletException {
+        SecurityContextHolder
+                .getContext()
+                .setAuthentication(setAuthentication(request));
 
-		SecurityContextHolder
-				.getContext()
-				.setAuthentication(getAuthentication(request));
+        chain.doFilter(request, response);
+    }
 
-		chain.doFilter(request, response);
+    private boolean isAuthorizationHeader(String authorizationHeader) {
+        return Objects.isNull(authorizationHeader) ||
+                !authorizationHeader.startsWith(
+                        Objects.requireNonNull(environment.getProperty(TOKEN_HEADER_PREFIX))
+                );
+    }
 
-	}
+    private String getAuthorizationTokenHeader(HttpServletRequest request) {
+        return request.getHeader(environment.getProperty(TOKEN_HEADER_NAME));
+    }
 
-	private String getAuthorizationTokenHeader(HttpServletRequest request) {
-		return request.getHeader(environment.getProperty("authorization.token.header.name"));
-	}
+    private UsernamePasswordAuthenticationToken setAuthentication(HttpServletRequest request) {
 
-	private UsernamePasswordAuthenticationToken getAuthentication(HttpServletRequest request) {
+       return Optional.ofNullable(getAuthorizationTokenHeader(request))
+                .filter(authorizationTokenHeader ->
+                        Objects.nonNull(getUserId(authorizationTokenHeader)))
+                .map(this::getUserId)
+                .map(userId -> new UsernamePasswordAuthenticationToken(userId, null, new ArrayList<>()))
+                .orElse(null);
+    }
 
-		String authorizationHeader = getAuthorizationTokenHeader(request);
+    private String getUserId(String authorizationHeader) {
+        return Jwts.parser()
+                .setSigningKey(environment.getProperty(TOKEN_SECRET))
+                .parseClaimsJws(getTokenWithoutPrefix(authorizationHeader))
+                .getBody()
+                .getSubject();
+    }
 
-		if (authorizationHeader == null) {
-			return null;
-		}
-
-		String tokenWithoutPrefix = authorizationHeader.replace(
-				Objects.requireNonNull(environment.getProperty("authorization.token.header.prefix")),
+    private String getTokenWithoutPrefix(String authorizationHeader) {
+		return authorizationHeader.replace(
+				Objects.requireNonNull(environment.getProperty(TOKEN_HEADER_PREFIX)),
 				""
 		);
-
-		String userId = Jwts.parser()
-				.setSigningKey(environment.getProperty("token.secret"))
-				.parseClaimsJws(tokenWithoutPrefix)
-				.getBody()
-				.getSubject();
-
-		if (userId == null) {
-			return null;
-		}
-
-		return new UsernamePasswordAuthenticationToken(userId, null, new ArrayList<>());
 	}
-
 }
